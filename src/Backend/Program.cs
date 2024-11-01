@@ -35,6 +35,16 @@ namespace TrackingSystem.Backend
             })
             .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("Basic", null);
 
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", builder =>
+                {
+                    builder.AllowAnyOrigin()
+                           .AllowAnyMethod()
+                           .AllowAnyHeader();
+                });
+            });
+
 
             // Agregar servicios de controladores a la aplicación.
             builder.Services.AddControllers();
@@ -77,8 +87,9 @@ namespace TrackingSystem.Backend
 
             app.UseHttpsRedirection();
 
-            app.UseAuthorization();
+            app.UseCors("AllowAll"); // Apply CORS globally to allow all origins
 
+            app.UseAuthorization();
 
             app.MapControllers();
 

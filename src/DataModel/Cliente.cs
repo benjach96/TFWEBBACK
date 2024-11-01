@@ -19,7 +19,5 @@ public partial class Cliente
 
     public string Estado { get; set; } = null!;
 
-    public virtual EmailRelacionado? EmailRelacionado { get; set; }
-
     public virtual ICollection<OrdenDeTrabajo> OrdenDeTrabajos { get; set; } = new List<OrdenDeTrabajo>();
 }

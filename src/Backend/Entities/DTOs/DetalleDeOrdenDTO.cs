@@ -18,5 +18,9 @@
         public string NombreDeLaFabrica { get; set; } = null!;
         public int? EnvioId { get; set; }
         public string Estado { get; set; } = null!;
+        public int? ConductorId { get; set; }
+        public string? ConductorNombres { get; set; }
+        public string? ConductorApellidos { get; set; }
+        public string? ConductorTelefono { get; set; }
     }
 }

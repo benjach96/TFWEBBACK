@@ -17,11 +17,11 @@ public partial class TrackingDataContext : DbContext
 
     public virtual DbSet<Cliente> Clientes { get; set; }
 
-    public virtual DbSet<EmailRelacionado> EmailsRelacionados { get; set; }
 
     public virtual DbSet<Envio> Envios { get; set; }
 
     public virtual DbSet<Fabrica> Fabricas { get; set; }
+    public virtual DbSet<Conductor> Conductores { get; set; }
 
     public virtual DbSet<OrdenDeTrabajo> OrdenesDeTrabajo { get; set; }
 
@@ -60,22 +60,6 @@ public partial class TrackingDataContext : DbContext
                 .IsUnicode(false);
         });
 
-        modelBuilder.Entity<EmailRelacionado>(entity =>
-        {
-            entity.HasKey(e => e.ClienteId);
-
-            entity.ToTable("EmailRelacionado");
-
-            entity.Property(e => e.ClienteId).ValueGeneratedNever();
-            entity.Property(e => e.Email)
-                .HasMaxLength(100)
-                .IsUnicode(false);
-
-            entity.HasOne(d => d.Cliente).WithOne(p => p.EmailRelacionado)
-                .HasForeignKey<EmailRelacionado>(d => d.ClienteId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("Tiene");
-        });
 
         modelBuilder.Entity<Envio>(entity =>
         {
@@ -102,6 +86,29 @@ public partial class TrackingDataContext : DbContext
             entity.Property(e => e.Nombre)
                 .HasMaxLength(100)
                 .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<Conductor>(entity =>
+        {
+            entity.ToTable("Conductor");
+
+            entity.Property(e => e.Nombres)
+                .HasMaxLength(100)
+                .IsUnicode(false);
+
+            entity.Property(e => e.Apellidos)
+                .HasMaxLength(100)
+                .IsUnicode(false);
+
+            entity.Property(e => e.Telefono)
+                .HasMaxLength(30)
+                .IsUnicode(false);
+
+            entity.Property(e => e.Estado)
+                .HasMaxLength(1)
+                .IsUnicode(false)
+                .HasDefaultValue("A")
+                .IsFixedLength();
         });
 
         modelBuilder.Entity<OrdenDeTrabajo>(entity =>
