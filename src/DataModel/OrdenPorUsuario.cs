@@ -10,6 +10,7 @@ public partial class OrdenPorUsuario
     public int OrdenDeTrabajoId { get; set; }
 
     public DateTimeOffset FechaDeCreacion { get; set; }
+    public DateTimeOffset FechaDeUltimaConsulta { get; set; }
 
     public virtual OrdenDeTrabajo OrdenDeTrabajo { get; set; } = null!;
 

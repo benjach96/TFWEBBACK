@@ -41,7 +41,7 @@ namespace TrackingSystem.Backend.Controllers
                 return BadRequest(new ErrorSimple(101, "Las contraseñas no coinciden"));
             }
 
-            // TODO: Verificar si el email ya existe
+
 
             var usuario = _mapper.Map<Usuario>(nuevoUsuario);
             usuario.PasswordHash = BasicAuthenticationHelper.GetPasswordHash(nuevoUsuario.Password);
