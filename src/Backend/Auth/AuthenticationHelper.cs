@@ -2,7 +2,7 @@
 
 namespace TrackingSystem.Backend.Auth
 {
-    public static class BasicAuthenticationHelper
+    public static class AuthenticationHelper
     {
         public static string UserIdClaimName = "UserId";
         public static string GetPasswordHash(string password)

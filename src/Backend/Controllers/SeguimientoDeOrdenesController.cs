@@ -16,21 +16,21 @@ namespace TrackingSystem.Backend.Controllers
     [Authorize]
     [Route("api/[controller]")]
     [ApiController]
-    public class OrdenesController : ControllerBase
+    public class SeguimientoDeOrdenesController : ControllerBase
     {
         private readonly TrackingDataContext _context;
 
-        public OrdenesController(TrackingDataContext context)
+        public SeguimientoDeOrdenesController(TrackingDataContext context)
         {
             _context = context;
         }
 
         // GET: api/usuario/5/ordenes
-        [HttpGet("/api/Ordenes")]
+        [HttpGet("/api/SeguimientoDeOrdenes")]
         public async Task<ActionResult<List<ResumenDeOrdenDTO>>> GetOrdenes([FromQuery] int? cantidad)
         {
             // Obtener el id del usuario actual
-            var userId = BasicAuthenticationHelper.GetUsuarioId(User);
+            var userId = AuthenticationHelper.GetUsuarioId(User);
 
             // Recuperar las ordenes de trabajo del usuario
             var ordenPorUsuario = await _context.OrdenesPorUsuario
@@ -64,7 +64,7 @@ namespace TrackingSystem.Backend.Controllers
             return result;
         }
 
-        [HttpGet("/api/Ordenes/{codigoDeSeguimiento}")]
+        [HttpGet("/api/SeguimientoDeOrdenes/{codigoDeSeguimiento}")]
         public async Task<ActionResult<DetalleDeOrdenDTO>> GetOrdenPorCodigoDeSeguimiento(string codigoDeSeguimiento)
         {
             // Recuperar la orden de trabajo por el codigo de seguimiento (ignorar el usuario actual)
@@ -82,7 +82,7 @@ namespace TrackingSystem.Backend.Controllers
             }
 
             // Recuperar el id del usuario actual
-            var usuarioId = BasicAuthenticationHelper.GetUsuarioId(User);
+            var usuarioId = AuthenticationHelper.GetUsuarioId(User);
 
             // Agregar la orden de trabajo al usuario si no lo esta
             var orderPorUsuario = _context.OrdenesPorUsuario
@@ -142,15 +142,38 @@ namespace TrackingSystem.Backend.Controllers
             return result;
         }
 
-        [HttpDelete("/api/Ordenes/{ordenDeTrabajoId}")]
-        public async Task<ActionResult> DeleteOrdenPorUsuario(int ordenDeTrabajoId)
+        //[HttpDelete("/api/SeguimientoDeOrdenes/{ordenDeTrabajoId}")]
+        //public async Task<ActionResult> DeleteOrdenPorUsuario(int ordenDeTrabajoId)
+        //{
+        //    // Recuperar el id del usuario actual
+        //    var usuarioId = AuthenticationHelper.GetUsuarioId(User);
+
+        //    // Recuperar la orden de trabajo por el codigo de seguimiento (ignorar el usuario actual)
+        //    var orden = await _context.OrdenesPorUsuario
+        //        .Where(m => m.OrdenDeTrabajoId == ordenDeTrabajoId && m.UsuarioId == usuarioId)
+        //        .FirstOrDefaultAsync();
+
+        //    // Si no se encuentra la orden de trabajo, devolver un 404
+        //    if (orden == null)
+        //    {
+        //        return NotFound();
+        //    }
+
+        //    _context.OrdenesPorUsuario.Remove(orden);
+        //    await _context.SaveChangesAsync().ConfigureAwait(false);
+
+        //    return Ok();
+        //}
+
+        [HttpDelete("/api/SeguimientoDeOrdenes/{codigoDeSeguimiento}")]
+        public async Task<ActionResult> DeleteOrdenPorUsuario(string codigoDeSeguimiento)
         {
             // Recuperar el id del usuario actual
-            var usuarioId = BasicAuthenticationHelper.GetUsuarioId(User);
+            var usuarioId = AuthenticationHelper.GetUsuarioId(User);
 
-            // Recuperar la orden de trabajo por el codigo de seguimiento (ignorar el usuario actual)
+            // Recuperar OrdenPorUsuario basado en el codigo de seguimiento
             var orden = await _context.OrdenesPorUsuario
-                .Where(m => m.OrdenDeTrabajoId == ordenDeTrabajoId && m.UsuarioId == usuarioId)
+                .Where(m => m.OrdenDeTrabajo.CodigoDeSeguimiento == codigoDeSeguimiento && m.UsuarioId == usuarioId)
                 .FirstOrDefaultAsync();
 
             // Si no se encuentra la orden de trabajo, devolver un 404

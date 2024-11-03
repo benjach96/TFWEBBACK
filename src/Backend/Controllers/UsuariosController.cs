@@ -14,6 +14,10 @@ using TrackingSystem.Backend.Entities;
 using TrackingSystem.Backend.Entities.Inputs;
 using TrackingSystem.Backend.Entities.DTOs;
 using TrackingSystem.DataModel;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 namespace TrackingSystem.Backend.Controllers
 {
@@ -23,18 +27,22 @@ namespace TrackingSystem.Backend.Controllers
     {
         private readonly TrackingDataContext _context;
         readonly IMapper _mapper;
+        readonly IConfiguration _configuration;
+        readonly string _jwtKey;
 
-        public UsuariosController(TrackingDataContext context, IMapper mapper)
+        public UsuariosController(TrackingDataContext context, IConfiguration configuration, IMapper mapper)
         {
-            this._mapper = mapper;
-            _context = context;
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _jwtKey = _configuration["JWT:Key"] ?? throw new ArgumentNullException("JWT:Key");
         }
 
         // POST: api/Usuarios
-        [HttpPost]
+        [HttpPost("Registrar")]
         [ProducesResponseType<PostUsuarioDTO>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status400BadRequest)]
-        public async Task<ActionResult> PostUsuario(NuevoUsuarioInput nuevoUsuario)
+        public async Task<ActionResult> Registrar(NuevoUsuarioInput nuevoUsuario)
         {
             if (nuevoUsuario.Password != nuevoUsuario.ConfirmacionDePassword)
             {
@@ -44,7 +52,7 @@ namespace TrackingSystem.Backend.Controllers
 
 
             var usuario = _mapper.Map<Usuario>(nuevoUsuario);
-            usuario.PasswordHash = BasicAuthenticationHelper.GetPasswordHash(nuevoUsuario.Password);
+            usuario.PasswordHash = AuthenticationHelper.GetPasswordHash(nuevoUsuario.Password);
             usuario.FechaDeCreacion = DateTimeOffset.Now;
             usuario.Estado = "A";
 
@@ -70,9 +78,10 @@ namespace TrackingSystem.Backend.Controllers
             }
         }
 
-
-        [HttpPost("Verificar")]
-        public async Task<ActionResult> VerificarCredenciales(VerificarCredencialesInput credenciales)
+        [HttpPost("Login")]
+        [ProducesResponseType<AuthToken>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult> Login(VerificarCredencialesInput credenciales)
         {
             var usuario = await _context.Usuarios
                 .Where(m => m.Email == credenciales.Email && m.Estado == "A")
@@ -82,7 +91,7 @@ namespace TrackingSystem.Backend.Controllers
             {
                 return Unauthorized(new ErrorSimple(100, "Usuario no existe o el password es incorrecto."));
             }
-            var hashedPassword = BasicAuthenticationHelper.GetPasswordHash(credenciales.Password);
+            var hashedPassword = AuthenticationHelper.GetPasswordHash(credenciales.Password);
 
             if (hashedPassword != usuario.PasswordHash)
             {
@@ -90,10 +99,40 @@ namespace TrackingSystem.Backend.Controllers
                 return Unauthorized(new ErrorSimple(100, "Usuario no existe o el password es incorrecto."));
             }
 
-            var result = _mapper.Map<PostUsuarioDTO>(usuario);
+            // Generar token JWT
+            SecurityToken token;
+            string tokenString;
+            GenerateJwtToken(usuario, out token, out tokenString);
 
-            return Ok(result);
+            // Retornar el token e informacion basica del usuario
+            return Ok(new
+            {
+                token = tokenString,
+                expiration = token.ValidTo.ToUniversalTime(),
+                user = usuario
+            });
+
+            // NOTA: No se esta considerando REFRESH TOKENS. Para este ejemplo se asume que el token expira en 4 horas.
+
         }
 
+        private void GenerateJwtToken(Usuario usuario, out SecurityToken token, out string tokenString)
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(_jwtKey);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(new Claim[]
+                {
+                    new Claim(ClaimTypes.Name, usuario.Email),
+                    new Claim(AuthenticationHelper.UserIdClaimName, usuario.UsuarioId.ToString())
+                }),
+                Expires = DateTime.UtcNow.AddHours(4), // Token expiration
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+            };
+
+            token = tokenHandler.CreateToken(tokenDescriptor);
+            tokenString = tokenHandler.WriteToken(token);
+        }
     }
 }

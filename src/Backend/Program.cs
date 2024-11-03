@@ -1,8 +1,11 @@
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text;
 using TrackingSystem.Backend.Auth;
 using TrackingSystem.DataModel;
 
@@ -27,14 +30,26 @@ namespace TrackingSystem.Backend
             });
 
 
-            // Authentication BASICA usando "usuario y password". Es necesario agregar el servicio de autenticación
+            // Configurar Autenticacion usando JWT Configure JWT
+            var key = Encoding.ASCII.GetBytes(config["JWT:Key"]!); 
+
             builder.Services.AddAuthentication(options =>
             {
-                options.DefaultAuthenticateScheme = "Basic";
-                options.DefaultChallengeScheme = "Basic";
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
             })
-            .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("Basic", null);
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(key),
+                    ValidateIssuer = false, // Para este ejemplo no se valida el emisor
+                    ValidateAudience = false, // Para ese ejemplo no se valida el receptor
+                };
+            });
 
+            // Configurar CORS para permitir solicitudes desde cualquier origen
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowAll", builder =>
@@ -48,29 +63,37 @@ namespace TrackingSystem.Backend
 
             // Agregar servicios de controladores a la aplicación.
             builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+            // Agregar Swagger
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {
-                c.AddSecurityDefinition("basic", new OpenApiSecurityScheme
-                {
-                    Type = SecuritySchemeType.Http,
-                    Scheme = "basic",
-                    Description = "Basic Authorization header usando el esquema Bearer."
-                });
+                c.SwaggerDoc("v1", new() { Title = "BetonDecken - Sistema de Seguimiento API", Version = "v1" });
 
-                c.AddSecurityRequirement(new OpenApiSecurityRequirement
+                // Agregar Authorizacion tipo Bearer a Swagger
+                c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "Por favor ingrese JWT dentro del campo Bearer. El token se puede obtener usando /Usuarios/Login",
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer"
+                });
+                c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
                 {
                     {
-                        new OpenApiSecurityScheme
+                        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                         {
-                            Reference = new OpenApiReference
+                            Reference = new Microsoft.OpenApi.Models.OpenApiReference
                             {
-                                Type = ReferenceType.SecurityScheme,
-                                Id = "basic"
-                            }
+                                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            },
+                            Scheme = "oauth2",
+                            Name = "Bearer",
+                            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+
                         },
-                        new string[] { }
+                        new List<string>()
                     }
                 });
             });
@@ -87,8 +110,9 @@ namespace TrackingSystem.Backend
 
             app.UseHttpsRedirection();
 
-            app.UseCors("AllowAll"); // Apply CORS globally to allow all origins
+            app.UseCors("AllowAll");
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapControllers();
