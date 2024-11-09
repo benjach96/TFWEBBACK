@@ -24,6 +24,8 @@ namespace TrackingSystem.Backend
 
             builder.Services.AddAutoMapper(typeof(TrackingProfile));
 
+            builder.Services.AddMemoryCache();
+
             builder.Services.AddDbContext<TrackingDataContext>((options) =>
             {
                 options.UseSqlServer(config.GetConnectionString("DefaultConnection"));
@@ -75,8 +77,8 @@ namespace TrackingSystem.Backend
                     In = Microsoft.OpenApi.Models.ParameterLocation.Header,
                     Description = "Por favor ingrese JWT dentro del campo Bearer. El token se puede obtener usando /Usuarios/Login",
                     Name = "Authorization",
-                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-                    Scheme = "Bearer"
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+                    Scheme = "bearer"
                 });
                 c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
                 {
