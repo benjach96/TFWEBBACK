@@ -38,7 +38,13 @@ namespace TrackingSystem.Backend.Controllers
             _jwtKey = _configuration["JWT:Key"] ?? throw new ArgumentNullException("JWT:Key");
         }
 
-        // POST: api/Usuarios
+        /// <summary>
+        /// Registra un nuevo usuario en el sistema.
+        /// </summary>
+        /// <param name="nuevoUsuario"></param>
+        /// <response code="200">Usuario registrado correctamente</response>
+        /// <response code="400">Se produjo un error al crear el usuario, verifique la respuesta para mas detalles.</response>
+        /// <returns></returns>
         [HttpPost("Registrar")]
         [ProducesResponseType<PostUsuarioDTO>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status400BadRequest)]
@@ -78,6 +84,13 @@ namespace TrackingSystem.Backend.Controllers
             }
         }
 
+        /// <summary>
+        /// Genera un token JWT para un usuario autenticado usanso "oauth2" y el flujo "Resource Owner Password Credentials Grant".
+        /// </summary>
+        /// <param name="credenciales">Email y Password</param>
+        /// <returns>JWT Token con usa expiracion de 4 horas</returns>
+        /// <response code="200">Usuario Autenticado</response>
+        /// <response code="401">Usuario no existe o el password es incorrecto.</response>
         [HttpPost("Login")]
         [ProducesResponseType<AuthToken>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]

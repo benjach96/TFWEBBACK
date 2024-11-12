@@ -60,8 +60,14 @@ namespace TrackingSystem.Backend.Controllers
             };
         }
 
-        // GET: api/usuario/5/ordenes
+        /// <summary>
+        /// Retorna las ordenes de trabajo que hay sido anteriormente consultadas por el usuario actual.
+        /// </summary>
+        /// <example>GET /api/SeguimientoDeOrdenes</example>
+        /// <param name="cantidad">Cantidad maxima de ordenes a retornar. (Defecto: 10).</param>
+        /// <returns></returns>
         [HttpGet("/api/SeguimientoDeOrdenes")]
+        [ProducesResponseType<List<ResumenDeOrdenDTO>>(StatusCodes.Status200OK)]
         public async Task<ActionResult<List<ResumenDeOrdenDTO>>> GetOrdenes([FromQuery] int? cantidad)
         {
             _logger?.LogDebug("GetOrdenes:START");
@@ -103,6 +109,14 @@ namespace TrackingSystem.Backend.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Retorna el detalle de una orden de trabajo por su codigo de seguimiento.
+        /// </summary>
+        /// <example>GET /api/SeguimientoDeOrdenes/ABC5202024</example>
+        /// <param name="codigoDeSeguimiento">Codigo de seguimiento de la orden de trabajo.</param>
+        /// <response code="200">Retorna el detalle de la orden de trabajo.</response>
+        /// <response code="404">Si no se encuentra la orden de trabajo.</response>
+        /// <returns></returns>
         [HttpGet("/api/SeguimientoDeOrdenes/{codigoDeSeguimiento}")]
         public async Task<ActionResult<DetalleDeOrdenDTO>> GetOrdenPorCodigoDeSeguimiento(string codigoDeSeguimiento)
         {
@@ -181,6 +195,14 @@ namespace TrackingSystem.Backend.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Elimina una orden de trabajo de la lista de seguimiento del usuario actual.
+        /// </summary>
+        /// <example>DELETE /api/SeguimientoDeOrdenes/ABC5202024</example>
+        /// <param name="codigoDeSeguimiento">Codigo de seguimiento de la orden de trabajo.</param>
+        /// <response code="200">Si la orden de trabajo fue eliminada.</response>
+        /// <response code="404">Si no se encuentra la orden de trabajo.</response>
+        /// <returns></returns>
         [HttpDelete("/api/SeguimientoDeOrdenes/{codigoDeSeguimiento}")]
         public async Task<ActionResult> DeleteOrdenPorUsuario(string codigoDeSeguimiento)
         {
@@ -204,9 +226,16 @@ namespace TrackingSystem.Backend.Controllers
             return Ok();
         }
 
+        /// <summary>
+        /// Retorna la ubicacion actual de una orden de trabajo en tiempo real. 
+        /// </summary>
+        /// <remarks>SIMULACION: Solo funciona con el codigo de seguimiento "ABC5202024"</remarks>
+        /// <param name="codigoDeSeguimiento">Codigo de seguimiento de la orden de trabajo.</param>
+        /// <response code="200">Retorna la ubicacion actual de la orden de trabajo.</response>
+        /// <response code="404">Si no se encuentra la orden de trabajo.</response>
+        /// <returns></returns>
         [HttpGet("/api/SeguimientoDeOrdenes/{codigoDeSeguimiento}/ubicacion")]
         [ProducesResponseType<RastreoEnTiempoRealDTO>(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public ActionResult<RastreoEnTiempoRealDTO> GetUbicacionActual(string codigoDeSeguimiento)
         {
             // TODO ESTO ES UNA SIMULACION DE UBICACION

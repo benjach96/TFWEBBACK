@@ -5,8 +5,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Reflection;
 using System.Text;
+using System.Xml.XPath;
 using TrackingSystem.Backend.Auth;
+using TrackingSystem.Backend.Swagger.Filters;
 using TrackingSystem.DataModel;
 
 namespace TrackingSystem.Backend
@@ -69,7 +72,23 @@ namespace TrackingSystem.Backend
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(c =>
             {
-                c.SwaggerDoc("v1", new() { Title = "BetonDecken - Sistema de Seguimiento API", Version = "v1" });
+                var info = config.GetRequiredSection("SwaggerDoc").Get<OpenApiInfo>();
+                if (info == null)
+                {
+                    throw new InvalidOperationException("No se encontró la configuración de SwaggerDoc en el archivo de configuración.");
+                }
+
+                //c.SwaggerDoc("v1", new() { Title = "BetonDecken - Sistema de Seguimiento API", Version = "v1" });
+                c.SwaggerDoc(info.Version, info);
+
+                // Documentar los tipos de respuesta
+                var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                c.IncludeXmlComments(() => new XPathDocument(xmlPath));
+
+                // Agregar filtros globales
+                c.OperationFilter<UnauthorizedResponsesOperationFilter>();
+                c.OperationFilter<GlobalExceptionResponseOperationFilter>();
 
                 // Agregar Authorizacion tipo Bearer a Swagger
                 c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
