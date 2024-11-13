@@ -49,7 +49,7 @@ namespace TrackingSystem.Backend.Controllers
         /// <response code="200">Usuario registrado correctamente</response>
         /// <response code="400">Se produjo un error al crear el usuario, verifique la respuesta para mas detalles.</response>
         /// <returns></returns>
-        [HttpPost("Registrar")]
+        [HttpPost("registrar")]
         [ProducesResponseType<PostUsuarioDTO>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult> Registrar(NuevoUsuarioInput nuevoUsuario)
@@ -58,8 +58,6 @@ namespace TrackingSystem.Backend.Controllers
             {
                 return BadRequest(new ErrorSimple(101, "Las contraseñas no coinciden"));
             }
-
-
 
             var usuario = _mapper.Map<Usuario>(nuevoUsuario);
             usuario.PasswordHash = AuthenticationHelper.GetPasswordHash(nuevoUsuario.Password);
@@ -95,10 +93,10 @@ namespace TrackingSystem.Backend.Controllers
         /// <returns>JWT Token con usa expiración de 4 horas</returns>
         /// <response code="200">Usuario Autenticado</response>
         /// <response code="401">Usuario no existe o el password es incorrecto.</response>
-        [HttpPost("Login")]
+        [HttpPost("login")]
         [ProducesResponseType<AuthToken>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult> Login(VerificarCredencialesInput credenciales)
+        public async Task<ActionResult> Login([FromBody] VerificarCredencialesInput credenciales)
         {
             var usuario = await _context.Usuarios
                 .Where(m => m.Email == credenciales.Email && m.Estado == "A")
@@ -120,6 +118,7 @@ namespace TrackingSystem.Backend.Controllers
             SecurityToken token;
             string tokenString;
             GenerateJwtToken(usuario, out token, out tokenString);
+            // Generar un refresh token
             var refreshToken = GenerateRefreshToken();
 
             // Almacenar el refresh token en la base de datos
@@ -139,39 +138,47 @@ namespace TrackingSystem.Backend.Controllers
 
             return Ok(new AuthToken
             {
-                Token = tokenString,
+                AccessToken = tokenString,
                 Expiration = token.ValidTo.ToUniversalTime(),
                 RefreshToken = refreshToken,
                 User = usuarioDTO
             });
-
-            // NOTA: No se esta considerando REFRESH TOKENS. Para este ejemplo se asume que el token expira en 4 horas.
-
         }
 
+        /// <summary>
+        /// Crea un nuevo Access Token y Refresh Token a partir de un Access Token expirado y un Refresh Token válido.
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        /// <response code="200">Nuevo Auth Token</response>
+        /// <response code="401">Access or Refresh Token son inválidos.</response>
         [HttpPost("refresh")]
+        [ProducesResponseType<RefreshAuthToken>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Refresh([FromBody] TokenRefreshRequestInput model)
         {
-            _logger?.LogInformation("Refresh token request");
+            // Obtener el principal del token expirado
             var principal = GetPrincipalFromExpiredToken(model.AccessToken);
             var rawUserId = principal.FindFirst(AuthenticationHelper.UserIdClaimName)?.Value;
             if (rawUserId == null || !int.TryParse(rawUserId, out var userId))
             {
-                return Unauthorized();
+                return Unauthorized(new ErrorSimple(101, "Access token es Invalido."));
             }
 
+            // Verificar que el refresh token sea válido
             var savedRefreshToken = await _context.RefreshTokens
                 .FirstOrDefaultAsync(x => x.Token == model.RefreshToken && x.UsuarioId == userId && !x.EstaRevocada);
 
             if (savedRefreshToken == null || savedRefreshToken.FechaDeExpiracion <= DateTime.UtcNow)
             {
-                return Unauthorized("Invalid or expired refresh token");
+                return Unauthorized(new ErrorSimple(102, "Refresh token es Invalido o expirado."));
             }
 
-            // Optionally, revoke the old refresh token and generate a new one
+            // Revocar el refresh token actual para que no pueda ser usado nuevamente
             savedRefreshToken.EstaRevocada = true;
             savedRefreshToken.FechaDeRevocacion = DateTime.UtcNow;
 
+            // Generar un nuevo refresh token
             var newRefreshToken = GenerateRefreshToken();
             var newRefreshTokenEntity = new RefreshToken
             {
@@ -182,18 +189,27 @@ namespace TrackingSystem.Backend.Controllers
             };
             _context.RefreshTokens.Add(newRefreshTokenEntity);
 
+            // Generar un nuevo access token
             GenerateJwtToken(principal.Claims, out var token, out var newAccessToken);
 
+            // Almacenar los cambios en la base de datos
             await _context.SaveChangesAsync();
 
-            return Ok(new
+            return Ok(new RefreshAuthToken
             {
                 AccessToken = newAccessToken,
                 RefreshToken = newRefreshToken,
-                ExpirationDate = token.ValidTo.ToUniversalTime()
+                Expiration = token.ValidTo.ToUniversalTime()
             });
         }
 
+        /// <summary>
+        /// Revoca un Refresh Token.
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        /// <response code="204"></response>
+        /// <response code="400">Token invalido</response>
         [HttpPost("revoke")]
         public async Task<IActionResult> Revoke([FromBody] RevokeTokenRequestInput model)
         {
@@ -201,7 +217,7 @@ namespace TrackingSystem.Backend.Controllers
                 .FirstOrDefaultAsync(x => x.Token == model.RefreshToken);
 
             if (refreshToken == null)
-                return BadRequest("Invalid token");
+                return BadRequest("Token invalido");
 
             refreshToken.EstaRevocada = true;
             refreshToken.FechaDeRevocacion = DateTime.UtcNow;
