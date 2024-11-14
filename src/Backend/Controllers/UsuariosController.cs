@@ -18,6 +18,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
 namespace TrackingSystem.Backend.Controllers
 {
@@ -29,9 +31,11 @@ namespace TrackingSystem.Backend.Controllers
         readonly IMapper _mapper;
         readonly IConfiguration _configuration;
         readonly string _jwtKey;
+        readonly ILogger _logger;
 
-        public UsuariosController(TrackingDataContext context, IConfiguration configuration, IMapper mapper)
+        public UsuariosController(TrackingDataContext context, IConfiguration configuration, IMapper mapper, ILogger<UsuariosController> logger)
         {
+            this._logger = logger;
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -45,7 +49,7 @@ namespace TrackingSystem.Backend.Controllers
         /// <response code="200">Usuario registrado correctamente</response>
         /// <response code="400">Se produjo un error al crear el usuario, verifique la respuesta para mas detalles.</response>
         /// <returns></returns>
-        [HttpPost("Registrar")]
+        [HttpPost("registrar")]
         [ProducesResponseType<PostUsuarioDTO>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult> Registrar(NuevoUsuarioInput nuevoUsuario)
@@ -54,8 +58,6 @@ namespace TrackingSystem.Backend.Controllers
             {
                 return BadRequest(new ErrorSimple(101, "Las contraseñas no coinciden"));
             }
-
-
 
             var usuario = _mapper.Map<Usuario>(nuevoUsuario);
             usuario.PasswordHash = AuthenticationHelper.GetPasswordHash(nuevoUsuario.Password);
@@ -85,16 +87,16 @@ namespace TrackingSystem.Backend.Controllers
         }
 
         /// <summary>
-        /// Genera un token JWT para un usuario autenticado usanso "oauth2" y el flujo "Resource Owner Password Credentials Grant".
+        /// Genera un token JWT para un usuario autenticado usando "oauth2" y el flujo "Resource Owner Password Credentials Grant".
         /// </summary>
         /// <param name="credenciales">Email y Password</param>
-        /// <returns>JWT Token con usa expiracion de 4 horas</returns>
+        /// <returns>JWT Token con usa expiración de 4 horas</returns>
         /// <response code="200">Usuario Autenticado</response>
         /// <response code="401">Usuario no existe o el password es incorrecto.</response>
-        [HttpPost("Login")]
+        [HttpPost("login")]
         [ProducesResponseType<AuthToken>(StatusCodes.Status200OK)]
         [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]
-        public async Task<ActionResult> Login(VerificarCredencialesInput credenciales)
+        public async Task<ActionResult> Login([FromBody] VerificarCredencialesInput credenciales)
         {
             var usuario = await _context.Usuarios
                 .Where(m => m.Email == credenciales.Email && m.Estado == "A")
@@ -116,36 +118,173 @@ namespace TrackingSystem.Backend.Controllers
             SecurityToken token;
             string tokenString;
             GenerateJwtToken(usuario, out token, out tokenString);
+            // Generar un refresh token
+            var refreshToken = GenerateRefreshToken();
 
-            // Retornar el token e informacion basica del usuario
-            return Ok(new
+            // Almacenar el refresh token en la base de datos
+            _context.RefreshTokens.Add(new RefreshToken
             {
-                token = tokenString,
-                expiration = token.ValidTo.ToUniversalTime(),
-                user = usuario
+                UsuarioId = usuario.UsuarioId,
+                Token = refreshToken,
+                FechaDeCreacion = DateTime.UtcNow,
+                EstaRevocada = false,
+                FechaDeExpiracion = DateTime.UtcNow.AddHours(4),
+                FechaDeRevocacion = null
             });
+            await _context.SaveChangesAsync().ConfigureAwait(false);
 
-            // NOTA: No se esta considerando REFRESH TOKENS. Para este ejemplo se asume que el token expira en 4 horas.
+            // Retornar el token e información básica del usuario
+            var usuarioDTO = _mapper.Map<PostUsuarioDTO>(usuario);
 
+            return Ok(new AuthToken
+            {
+                AccessToken = tokenString,
+                Expiration = token.ValidTo.ToUniversalTime(),
+                RefreshToken = refreshToken,
+                User = usuarioDTO
+            });
         }
 
-        private void GenerateJwtToken(Usuario usuario, out SecurityToken token, out string tokenString)
+        /// <summary>
+        /// Crea un nuevo Access Token y Refresh Token a partir de un Access Token expirado y un Refresh Token válido.
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        /// <response code="200">Nuevo Auth Token</response>
+        /// <response code="401">Access or Refresh Token son inválidos.</response>
+        [HttpPost("refresh")]
+        [ProducesResponseType<RefreshAuthToken>(StatusCodes.Status200OK)]
+        [ProducesResponseType<ErrorSimple>(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> Refresh([FromBody] TokenRefreshRequestInput model)
+        {
+            // Obtener el principal del token expirado
+            var principal = GetPrincipalFromExpiredToken(model.AccessToken);
+            var rawUserId = principal.FindFirst(AuthenticationHelper.UserIdClaimName)?.Value;
+            if (rawUserId == null || !int.TryParse(rawUserId, out var userId))
+            {
+                return Unauthorized(new ErrorSimple(101, "Access token es Invalido."));
+            }
+
+            // Verificar que el refresh token sea válido
+            var savedRefreshToken = await _context.RefreshTokens
+                .FirstOrDefaultAsync(x => x.Token == model.RefreshToken && x.UsuarioId == userId && !x.EstaRevocada);
+
+            if (savedRefreshToken == null || savedRefreshToken.FechaDeExpiracion <= DateTime.UtcNow)
+            {
+                return Unauthorized(new ErrorSimple(102, "Refresh token es Invalido o expirado."));
+            }
+
+            // Revocar el refresh token actual para que no pueda ser usado nuevamente
+            savedRefreshToken.EstaRevocada = true;
+            savedRefreshToken.FechaDeRevocacion = DateTime.UtcNow;
+
+            // Generar un nuevo refresh token
+            var newRefreshToken = GenerateRefreshToken();
+            var newRefreshTokenEntity = new RefreshToken
+            {
+                Token = newRefreshToken,
+                UsuarioId = userId,
+                FechaDeExpiracion = DateTime.UtcNow.AddHours(4),
+                FechaDeCreacion = DateTime.UtcNow
+            };
+            _context.RefreshTokens.Add(newRefreshTokenEntity);
+
+            // Generar un nuevo access token
+            GenerateJwtToken(principal.Claims, out var token, out var newAccessToken);
+
+            // Almacenar los cambios en la base de datos
+            await _context.SaveChangesAsync();
+
+            return Ok(new RefreshAuthToken
+            {
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken,
+                Expiration = token.ValidTo.ToUniversalTime()
+            });
+        }
+
+        /// <summary>
+        /// Revoca un Refresh Token.
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
+        /// <response code="204"></response>
+        /// <response code="400">Token invalido</response>
+        [HttpPost("revoke")]
+        public async Task<IActionResult> Revoke([FromBody] RevokeTokenRequestInput model)
+        {
+            var refreshToken = await _context.RefreshTokens
+                .FirstOrDefaultAsync(x => x.Token == model.RefreshToken);
+
+            if (refreshToken == null)
+                return BadRequest("Token invalido");
+
+            refreshToken.EstaRevocada = true;
+            refreshToken.FechaDeRevocacion = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        private ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
+        {
+            var tokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateAudience = false,
+                ValidateIssuer = false,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_jwtKey)),
+                ValidateLifetime = false // We are validating an expired token here
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out SecurityToken securityToken);
+            var jwtSecurityToken = securityToken as JwtSecurityToken;
+
+            if (jwtSecurityToken == null ||
+                !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+            {
+                throw new SecurityTokenException("Invalid token");
+            }
+
+            return principal;
+        }
+
+        private void GenerateJwtToken(IEnumerable<Claim> claims, out SecurityToken token, out string tokenString)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.ASCII.GetBytes(_jwtKey);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                Subject = new ClaimsIdentity(new Claim[]
-                {
-                    new Claim(ClaimTypes.Name, usuario.Email),
-                    new Claim(AuthenticationHelper.UserIdClaimName, usuario.UsuarioId.ToString())
-                }),
-                Expires = DateTime.UtcNow.AddHours(4), // Token expiration
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddMinutes(3), // Token de vida corta
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
 
             token = tokenHandler.CreateToken(tokenDescriptor);
             tokenString = tokenHandler.WriteToken(token);
+        }
+
+        private void GenerateJwtToken(Usuario usuario, out SecurityToken token, out string tokenString)
+        {
+            var claims = new Claim[]
+                {
+                    new Claim(ClaimTypes.Name, usuario.Nombres),
+                    new Claim(ClaimTypes.NameIdentifier, usuario.Email),
+                    new Claim(ClaimTypes.Email, usuario.Email),
+                    new Claim(AuthenticationHelper.UserIdClaimName, usuario.UsuarioId.ToString())
+                };
+
+            GenerateJwtToken(claims, out token, out tokenString);
+        }
+
+        private string GenerateRefreshToken()
+        {
+            var randomNumber = new byte[32];
+            using var rng = RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            return Convert.ToBase64String(randomNumber);
         }
     }
 }

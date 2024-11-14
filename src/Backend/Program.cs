@@ -1,6 +1,7 @@
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -35,8 +36,8 @@ namespace TrackingSystem.Backend
             });
 
 
-            // Configurar Autenticacion usando JWT Configure JWT
-            var key = Encoding.ASCII.GetBytes(config["JWT:Key"]!); 
+            // Configurar Autenticación usando JWT Configure JWT
+            var key = Encoding.ASCII.GetBytes(config["JWT:Key"]!);
 
             builder.Services.AddAuthentication(options =>
             {
@@ -51,6 +52,7 @@ namespace TrackingSystem.Backend
                     IssuerSigningKey = new SymmetricSecurityKey(key),
                     ValidateIssuer = false, // Para este ejemplo no se valida el emisor
                     ValidateAudience = false, // Para ese ejemplo no se valida el receptor
+                    ClockSkew = System.TimeSpan.Zero
                 };
             });
 

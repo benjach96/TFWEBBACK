@@ -15,21 +15,22 @@ public partial class TrackingDataContext : DbContext
     {
     }
 
-    public virtual DbSet<Cliente> Clientes { get; set; }
+    public virtual DbSet<Cliente> Clientes { get; set; } = null!;
 
 
-    public virtual DbSet<Envio> Envios { get; set; }
+    public virtual DbSet<Envio> Envios { get; set; } = null!;
 
-    public virtual DbSet<Fabrica> Fabricas { get; set; }
-    public virtual DbSet<Conductor> Conductores { get; set; }
+    public virtual DbSet<Fabrica> Fabricas { get; set; } = null!;
+    public virtual DbSet<Conductor> Conductores { get; set; } = null!;
 
-    public virtual DbSet<OrdenDeTrabajo> OrdenesDeTrabajo { get; set; }
+    public virtual DbSet<OrdenDeTrabajo> OrdenesDeTrabajo { get; set; } = null!;
 
-    public virtual DbSet<OrdenPorUsuario> OrdenesPorUsuario { get; set; }
+    public virtual DbSet<OrdenPorUsuario> OrdenesPorUsuario { get; set; } = null!;
 
-    public virtual DbSet<RastreoEnTiempoReal> RastreosEnTiempoReal { get; set; }
+    public virtual DbSet<RastreoEnTiempoReal> RastreosEnTiempoReal { get; set; } = null!;
 
-    public virtual DbSet<Usuario> Usuarios { get; set; }
+    public virtual DbSet<Usuario> Usuarios { get; set; } = null!;
+    public virtual DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
 
     //    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     //        => optionsBuilder.UseSqlServer("Server=***REMOVED***;Database=tracking;User ID=***REMOVED***;Password=***REMOVED***");
@@ -205,6 +206,17 @@ public partial class TrackingDataContext : DbContext
                 .HasMaxLength(100)
                 .IsUnicode(false);
             entity.Property(e => e.PasswordHash)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.ToTable("RefreshToken");
+
+            entity.Property(e => e.RefreshTokenId).UseIdentityColumn();
+
+            entity.Property(e => e.Token)
                 .HasMaxLength(50)
                 .IsUnicode(false);
         });
